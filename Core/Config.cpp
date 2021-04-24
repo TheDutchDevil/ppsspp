@@ -1212,8 +1212,14 @@ void Config::Load(const char *iniFileName, const char *controllerIniFilename) {
 	});
 
 	iRunCount++;
+
+	// TODO: What layer's responsibility is it to handle content:// URIs?
+	// This check is probably not really necessary here anyway, you can always
+	// press Home or Browse if you're in a bad directory.
+#if !PPSSPP_PLATFORM(ANDROID)
 	if (!File::Exists(Path(currentDirectory)))
 		currentDirectory = "";
+#endif
 
 	Section *log = iniFile.GetOrCreateSection(logSectionName);
 
