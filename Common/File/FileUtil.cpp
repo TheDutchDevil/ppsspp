@@ -233,21 +233,6 @@ std::string ResolvePath(const std::string &path) {
 #endif
 }
 
-// Remove any ending forward slashes from directory paths
-// Modifies argument.
-static void StripTailDirSlashes(std::string &fname) {
-	if (fname.length() > 1) {
-		size_t i = fname.length() - 1;
-#if PPSSPP_PLATFORM(WINDOWS)
-		if (i == 2 && fname[1] == ':' && fname[2] == '\\')
-			return;
-#endif
-		while (strchr(DIR_SEP_CHRS, fname[i]))
-			fname[i--] = '\0';
-	}
-	return;
-}
-
 // Returns true if file filename exists. Will return true on directories.
 bool ExistsInDir(const Path &path, const std::string &filename) {
 	return Exists(path / filename);
@@ -263,9 +248,6 @@ bool Exists(const std::string &filename) {
 	}
 
 	std::string fn = filename;
-
-	// TODO: Remove.
-	StripTailDirSlashes(fn);
 
 #if defined(_WIN32)
 	std::wstring copy = ConvertUTF8ToWString(fn);
@@ -310,27 +292,23 @@ bool IsDirectory(const Path &filename) {
 		return false;
 	}
 
-	std::string fn = filename.ToString();
-	StripTailDirSlashes(fn);
-
 #if defined(_WIN32)
-	std::wstring copy = ConvertUTF8ToWString(fn);
 	WIN32_FILE_ATTRIBUTE_DATA data{};
-	if (!GetFileAttributesEx(copy.c_str(), GetFileExInfoStandard, &data) || data.dwFileAttributes == INVALID_FILE_ATTRIBUTES) {
+	if (!GetFileAttributesEx(filename.ToWString().c_str(), GetFileExInfoStandard, &data) || data.dwFileAttributes == INVALID_FILE_ATTRIBUTES) {
 		auto err = GetLastError();
 		if (err != ERROR_FILE_NOT_FOUND) {
-			WARN_LOG(COMMON, "GetFileAttributes failed on %s: %08x %s", fn.c_str(), (uint32_t)err, GetStringErrorMsg(err).c_str());
+			WARN_LOG(COMMON, "GetFileAttributes failed on %s: %08x %s", filename.ToVisualString().c_str(), (uint32_t)err, GetStringErrorMsg(err).c_str());
 		}
 		return false;
 	}
 	DWORD result = data.dwFileAttributes;
 	return (result & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
 #else
-	std::string copy(fn);
+	std::string copy = filename.ToString();
 	struct stat file_info;
 	int result = stat(copy.c_str(), &file_info);
 	if (result < 0) {
-		WARN_LOG(COMMON, "IsDirectory: stat failed on %s: %s", fn.c_str(), GetLastErrorMsg().c_str());
+		WARN_LOG(COMMON, "IsDirectory: stat failed on %s: %s", copy.c_str(), GetLastErrorMsg().c_str());
 		return false;
 	}
 	return S_ISDIR(file_info.st_mode);
@@ -406,11 +384,9 @@ bool CreateDir(const Path &path) {
 		return false;
 	}
 
-	std::string fn = path.ToString();
-	StripTailDirSlashes(fn);
-	DEBUG_LOG(COMMON, "CreateDir('%s')", fn.c_str());
+	DEBUG_LOG(COMMON, "CreateDir('%s')", path.c_str());
 #ifdef _WIN32
-	if (::CreateDirectory(ConvertUTF8ToWString(fn).c_str(), NULL))
+	if (::CreateDirectory(path.ToWString().c_str(), NULL))
 		return true;
 	DWORD error = GetLastError();
 	if (error == ERROR_ALREADY_EXISTS)
@@ -421,17 +397,16 @@ bool CreateDir(const Path &path) {
 	ERROR_LOG(COMMON, "CreateDir: CreateDirectory failed on %s: %08x %s", path.c_str(), (uint32_t)error, GetStringErrorMsg(error).c_str());
 	return false;
 #else
-	if (mkdir(fn.c_str(), 0755) == 0)
+	if (mkdir(path.ToString().c_str(), 0755) == 0)
 		return true;
 
 	int err = errno;
-	if (err == EEXIST)
-	{
-		WARN_LOG(COMMON, "CreateDir: mkdir failed on %s: already exists", fn.c_str());
+	if (err == EEXIST) {
+		WARN_LOG(COMMON, "CreateDir: mkdir failed on %s: already exists", path.c_str());
 		return true;
 	}
 
-	ERROR_LOG(COMMON, "CreateDir: mkdir failed on %s: %s", fn.c_str(), strerror(err));
+	ERROR_LOG(COMMON, "CreateDir: mkdir failed on %s: %s", path.c_str(), strerror(err));
 	return false;
 #endif
 }
@@ -442,14 +417,13 @@ bool CreateFullPath(const Path &path) {
 	case PathType::NATIVE:
 		break; // OK
 	case PathType::CONTENT_URI:
-		ERROR_LOG(COMMON, "CreateFullPath(%s): Not supported", path.c_str());
+		ERROR_LOG(COMMON, "CreateFullPath(%s): Not yet supported", path.c_str());
 		return false;
 	default:
 		return false;
 	}
 
 	std::string fullPath = path.ToString();
-	StripTailDirSlashes(fullPath);
 	int panicCounter = 100;
 	VERBOSE_LOG(COMMON, "CreateFullPath: path %s", fullPath.c_str());
 		
